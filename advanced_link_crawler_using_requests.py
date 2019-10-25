@@ -9,14 +9,7 @@ from throttle import Throttle
 
 
 def download(url, user_agent='wswp', num_retries=2, proxies=None):
-    """ Download a given URL and return the page content
-        args:
-            url (str): URL
-        kwargs:
-            user_agent (str): user agent (default: wswp)
-            proxies (dict): proxy dict w/ keys 'http' and 'https', values
-                            are strs (i.e. 'http(s)://IP') (default: None)
-            num_retries (int): # of retries if a 5xx error is seen (default: 2)
+    """ Trata de cargar la pagina y si lo logra guarda el texto de la pagina 
     """
     print('Downloading:', url)
     headers = {'User-Agent': user_agent}
@@ -32,7 +25,7 @@ def download(url, user_agent='wswp', num_retries=2, proxies=None):
             print(url)
             html = None
             if num_retries and 500 <= resp.status_code < 600:
-                # recursively retry 5xx HTTP errors
+                
                 return download(url, num_retries - 1)
     except requests.exceptions.RequestException as e:
         print('Download error:', e)
@@ -41,6 +34,7 @@ def download(url, user_agent='wswp', num_retries=2, proxies=None):
 
 
 def get_robots_parser(robots_url):
+
     " Return the robots parser object using the robots_url "
     rp = robotparser.RobotFileParser()
     rp.set_url(robots_url)
@@ -49,48 +43,37 @@ def get_robots_parser(robots_url):
 
 
 def get_links(html):
-    """ Return a list of links (using simple regex matching)
-        from the html content """
-    # a regular expression to extract all links from the webpage
+    
+    # Usando una expresion regular para coger los link
     webpage_regex = re.compile("""<a[^>]+href=["'](.*?)["']""", re.IGNORECASE)
-    # list of all links from the webpage
+    
     return webpage_regex.findall(html)
 
 
 def link_crawler(start_url, link_regex, robots_url=None, user_agent='wswp',
-                 proxies=None, delay=3, max_depth=1):
-    """ Crawl from the given start URL following links matched by link_regex.
-    In the current implementation, we do not actually scrape any information.
-
-        args:
-            start_url (str): web site to start crawl
-            link_regex (str): regex to match for links
-        kwargs:
-            robots_url (str): url of the site's robots.txt
-                              (default: start_url + /robots.txt)
-            user_agent (str): user agent (default: wswp)
-            proxies (dict): proxy dict w/ keys 'http' and 'https', values
-                            are strs (i.e. 'http(s)://IP') (default: None)
-            delay (int): seconds to throttle between requests
-                         to one domain (default: 3)
-            max_depth (int): maximum crawl depth (to avoid traps) (default: 4)
+                 proxies=None, delay=0.0001, max_depth=999999, max_count = 10000):
+    """ 
+    Recorre los link en profundidad 
     """
     i = 0
     crawl_queue = [start_url]
     result = []
-    # keep track which URL's have seen before
+    # Dict donde guardare las url visitadas para no volver a parsearlas
     seen = {}
     if not robots_url:
         robots_url = '{}/robots.txt'.format(start_url)
     rp = get_robots_parser(robots_url)
     throttle = Throttle(delay)
-    while crawl_queue:
+    while crawl_queue and i <= 10000:
         url = crawl_queue.pop()
-        # check url passes robots.txt restrictions
+        
         if rp.can_fetch(user_agent, url):
             depth = seen.get(url, 0)
             if depth == max_depth:
                 print('Skipping %s due to depth' % url)
+                continue
+            if i > max_count:
+                print('Skipping %s due to exceed limit count' % url)
                 continue
             throttle.wait(url)
             html = download(url, user_agent=user_agent, proxies=proxies)
@@ -98,25 +81,27 @@ def link_crawler(start_url, link_regex, robots_url=None, user_agent='wswp',
                 continue
             i+=1
             print(i)
+            #Devuelve un item parecido a scrapy donde guardo la url y el texto plano, ademas de 
+            ##guardarlo en un fichero
             yield WikiItem(html, url)
-            # TODO: add actual data scraping here
-            # filter for links matching our regular expression
-            print(crawl_queue)
+            
+            # Filtramos los link a usar 
             for link in get_links(html):
-               # print(link,'WTF')
                 if re.match('#(a-z)*', link):
                     continue
                 if re.match(link_regex, link):
-
-                    abs_link2 = urljoin(start_url, 'A/')
-                    abs_link = urljoin(abs_link2, link)
-                    if abs_link not in seen:
+                    # Un pequeno parche que la wiki local al pedirle los link no me ponia esta A
+                    # en una pagina online no tuve problema al quitarlo
+                    #abs_link2 = urljoin(start_url, 'A/')
+                    # abs_link = urljoin(abs_link2, link)
+                    abs_link = urljoin(start_url, link)
+                    if abs_link not in seen and len(abs_link) < 200:
                         seen[abs_link] = depth + 1
                         crawl_queue.append(abs_link)
         else:
             print('Blocked by robots.txt:', url)
 
-def WikiItem(html,url):
+def WikiItem(html, url):
     item = {}
     item['url'] = url
     soup = BeautifulSoup(html,'lxml') 
@@ -128,21 +113,29 @@ def WikiItem(html,url):
     # item['content'] = tree.text_content().strip()
 
     return item
+    
 def open_file():
-    file = open('items.jl','w')
+    file = open('items.json','w')
     return file
-def close_file(file):
+def close_file(dictItem,file):
+    json.dump(dictItem, file,indent = 4)
     file.close()
 
-def process_file(item,file):
-    line = json.dumps(dict(item))+ "\n"
-    file.write(line)
+def process_file(item,file,dictItem):
+    
+    dictItem['item'].append(item)
 
-content = link_crawler('http://192.168.43.106:8000/wikipedia_es_all_2017-01/?', '/*',max_depth = 1)
+content = link_crawler('http://localhost/D%3A', '/*',max_depth = 2)
+#print(len(content))
 file = open_file()
-
+dictItem = {}
+dictItem['item'] = []
+i = 0
 for x in content:
-    process_file(x, file)
-    print(x)
+    process_file(x, file, dictItem)
+    i+=1
+print(i)
 
-close_file(file)
+close_file(dictItem,file)
+
+
