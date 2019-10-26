@@ -124,8 +124,8 @@ def close_file(dictItem,file):
 def process_file(item,file,dictItem):
     
     dictItem['item'].append(item)
-
-content = link_crawler('http://localhost/D%3A', '/*',max_depth = 2)
+# Aqui comienza a scrapear la web, se pone como entrada la url semilla y la expresion regular para mantener un allowed domain
+content = link_crawler('http://localhost/D%3A', '/*')
 #print(len(content))
 file = open_file()
 dictItem = {}

@@ -77,6 +77,6 @@ td_matrix = create_term_document_matrix(tuples, doc_names, vocabulary)
 
 random_idx = random.randint(0, len(doc_names)-1)
 ranks = rank_plays(random_idx, td_matrix, compute_cosine_similarity)
-for idx in range(0, 10):
+for idx in range(0, 1000):
 	name = ranks[idx]
 	print('%d: %s' % (idx+1, doc_names[name]))
